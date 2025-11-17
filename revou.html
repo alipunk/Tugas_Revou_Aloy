@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Todo List — Simple</title>
+  <style>
+    :root{--bg:#f7f7fb;--card:#ffffff;--accent:#2b6cb0;--muted:#6b7280;--success:#10b981}
+    *{box-sizing:border-box}
+    body{font-family:Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; margin:0; background:var(--bg); color:#111}
+    .wrap{min-height:100vh; display:flex; align-items:center; justify-content:center; padding:32px}
+    .card{width:100%; max-width:720px; background:var(--card); border-radius:12px; padding:20px; box-shadow:0 8px 30px rgba(2,6,23,0.08)}
+    h1{margin:0 0 6px; font-size:20px}
+    p.lead{margin:0 0 18px; color:var(--muted); font-size:14px}
+
+    /* input */
+    .input-row{display:flex; gap:8px; margin-bottom:12px}
+    .input-row input[type="text"]{flex:1; padding:10px 12px; border-radius:8px; border:1px solid #e6e9ef; font-size:14px}
+    .input-row input[type=date]{padding:8px 10px; border-radius:8px; border:1px solid #e6e9ef}
+    .btn{background:var(--accent); color:#fff; padding:10px 14px; border-radius:8px; border:none; cursor:pointer}
+    .btn.ghost{background:transparent; color:var(--accent); border:1px solid rgba(43,108,176,0.12)}
+
+    /* list */
+    .controls{display:flex; justify-content:space-between; align-items:center; gap:12px; margin-top:6px; margin-bottom:12px}
+    .filters{display:flex; gap:8px}
+    .filters button{background:transparent; border:none; padding:6px 8px; border-radius:8px; cursor:pointer; color:var(--muted)}
+    .filters button.active{background:rgba(43,108,176,0.12); color:var(--accent)}
+
+    ul.todo{list-style:none; margin:0; padding:0}
+    li.item{display:flex; align-items:center; gap:12px; padding:10px; border-radius:8px; border:1px solid #f0f2f6; margin-bottom:8px}
+    li.item.completed{opacity:0.6; text-decoration:line-through}
+    .item .left{display:flex; align-items:center; gap:10px}
+    .item .left input[type=checkbox]{width:18px; height:18px}
+    .meta{display:flex; gap:10px; align-items:center; color:var(--muted); font-size:13px}
+    .meta .due{padding:4px 8px; border-radius:8px; background:#f3f6fb}
+    .actions{margin-left:auto; display:flex; gap:6px}
+    .small{font-size:13px}
+
+    /* responsive */
+    @media (max-width:520px){
+      .input-row{flex-direction:column}
+      .controls{flex-direction:column; align-items:flex-start}
+      .actions{gap:4px}
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Todo List</h1>
+      <p class="lead">Tambahkan tugas, tandai selesai, dan simpan otomatis di browser (localStorage).</p>
+
+      <div class="input-row">
+        <input id="newTask" type="text" placeholder="Masukkan tugas baru dan tekan Enter..." aria-label="tugas baru">
+        <input id="dueDate" type="date" aria-label="tanggal tenggat">
+        <button id="addBtn" class="btn">Tambah</button>
+      </div>
+
+      <div class="controls">
+        <div class="filters" role="tablist">
+          <button class="filter active" data-filter="all">Semua</button>
+          <button class="filter" data-filter="active">Aktif</button>
+          <button class="filter" data-filter="completed">Selesai</button>
+        </div>
+        <div>
+          <button id="clearCompleted" class="btn ghost">Bersihkan selesai</button>
+        </div>
+      </div>
+
+      <ul id="todos" class="todo" role="list"></ul>
+
+      <p class="small" id="count">0 tugas</p>
+    </div>
+  </div>
+
+  <script>
+    // Model: array of {id, text, due (ISO), done}
+    const KEY = 'todo_list_v1'
+    let todos = JSON.parse(localStorage.getItem(KEY) || '[]')
+    const $ = sel => document.querySelector(sel)
+    const $$ = sel => document.querySelectorAll(sel)
+
+    const elTodos = $('#todos')
+    const elNew = $('#newTask')
+    const elDue = $('#dueDate')
+    const elAdd = $('#addBtn')
+    const elCount = $('#count')
+
+    function save(){ localStorage.setItem(KEY, JSON.stringify(todos)) }
+
+    function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,6) }
+
+    function addTask(text, due){ if(!text || !text.trim()) return; todos.unshift({id:uid(), text:text.trim(), due: due || null, done:false}); save(); render(); }
+
+    function toggleDone(id){ todos = todos.map(t => t.id===id ? {...t, done: !t.done} : t); save(); render(); }
+    function removeTask(id){ todos = todos.filter(t => t.id!==id); save(); render(); }
+    function editTask(id, newText){ todos = todos.map(t => t.id===id ? {...t, text: newText} : t); save(); render(); }
+    function setDue(id, due){ todos = todos.map(t => t.id===id ? {...t, due: due} : t); save(); render(); }
+    function clearCompleted(){ todos = todos.filter(t => !t.done); save(); render(); }
+
+    // filtering
+    let filter = 'all'
+    function setFilter(f){ filter = f; $$('.filter').forEach(b => b.classList.toggle('active', b.dataset.filter===f)); render(); }
+
+    // render
+    function render(){
+      elTodos.innerHTML = ''
+      const shown = todos.filter(t => filter==='all' ? true : filter==='active' ? !t.done : t.done)
+      shown.forEach(t => {
+        const li = document.createElement('li')
+        li.className = 'item' + (t.done ? ' completed' : '')
+
+        li.innerHTML = `
+          <div class="left">
+            <input type="checkbox" ${t.done? 'checked' : ''} data-id="${t.id}">
+            <div class="body" data-id="${t.id}">${escapeHtml(t.text)}</div>
+          </div>
+          <div class="meta">
+            ${t.due ? `<div class="due">Due: ${new Date(t.due).toLocaleDateString()}</div>` : ''}
+          </div>
+          <div class="actions">
+            <button class="btn ghost edit" data-id="${t.id}">Ubah</button>
+            <button class="btn ghost del" data-id="${t.id}">Hapus</button>
+          </div>
+        `
+
+        elTodos.appendChild(li)
+      })
+      elCount.textContent = `${todos.length} tugas — ${todos.filter(t=>!t.done).length} tersisa`
+    }
+
+    // helpers
+    function escapeHtml(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;') }
+
+    // events
+    elAdd.addEventListener('click', ()=>{ addTask(elNew.value, elDue.value || null); elNew.value=''; elDue.value=''; })
+    elNew.addEventListener('keydown', e => { if(e.key==='Enter'){ addTask(elNew.value, elDue.value || null); elNew.value=''; elDue.value=''; } })
+
+    document.addEventListener('click', e => {
+      if(e.target.matches('input[type=checkbox]')){ toggleDone(e.target.dataset.id) }
+      if(e.target.matches('.del')){ removeTask(e.target.dataset.id) }
+      if(e.target.matches('.filter')){ setFilter(e.target.dataset.filter) }
+      if(e.target.matches('#clearCompleted')){ clearCompleted() }
+      if(e.target.matches('.edit')){ startEdit(e.target.dataset.id) }
+    })
+
+    function startEdit(id){
+      const li = [...elTodos.children].find(li => li.querySelector('[data-id]') && li.querySelector('[data-id]').dataset.id===id)
+      if(!li) return
+      const body = li.querySelector('.body')
+      const prev = body.textContent
+      const input = document.createElement('input')
+      input.type = 'text'; input.value = prev; input.style.padding='6px'; input.style.borderRadius='6px'; input.style.width='100%'
+      body.replaceWith(input)
+      input.focus()
+      input.addEventListener('blur', ()=>{ finishEdit(id, input.value) })
+      input.addEventListener('keydown', e => { if(e.key==='Enter'){ finishEdit(id, input.value) } if(e.key==='Escape'){ render() } })
+    }
+
+    function finishEdit(id, val){ if(!val || !val.trim()) { removeTask(id); return } editTask(id, val.trim()) }
+
+    // init
+    render()
+  </script>
+</body>
+</html>
